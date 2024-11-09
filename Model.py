@@ -7,3 +7,4 @@ class Model:
 
     def method_name(self):
         return f"Attributes: {self.k} and {self.mask}"
+     
