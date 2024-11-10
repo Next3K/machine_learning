@@ -11,7 +11,7 @@ API_KEY = "api-key"
 
 
 def scrap_to_json():
-    data = pd.read_csv("movie.csv", sep=";")
+    data = pd.read_csv("movie.csv", sep=";", header=None)
     data.columns = ['1', '2', '3']
     ids = data['2'].to_list()
 
@@ -20,21 +20,27 @@ def scrap_to_json():
         "accept": "application/json"
     }
 
+    i = 0
     for movie_id in ids:
         url = url_template.format(movie_id)
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             movie_data = response.json()
-            file_path = os.path.join("movies", f"movie_{movie_id}.json")
+            i += 1
+
+            movie_data['movie_id'] = i
+
+            file_path = os.path.join("movies", f"movie_{i}.json")
             with open(file_path, "w") as json_file:
                 json.dump(movie_data, json_file, indent=4)
-            print(f"Saved data for movie ID {movie_id}")
-            time.sleep(0.5)
+
+            print(f"Saved data for movie ID {i}")
+            time.sleep(0.2)
         except requests.exceptions.HTTPError as http_err:
-            print(f"HTTP error for movie ID {movie_id}: {http_err}")
+            print(f"HTTP error for movie ID {i}: {http_err}")
         except Exception as err:
-            print(f"Error for movie ID {movie_id}: {err}")
+            print(f"Error for movie ID {i}: {err}")
 
 
 def extract_from_json(directory: str):
@@ -43,6 +49,7 @@ def extract_from_json(directory: str):
         if filename.endswith(".json"):
             with open(os.path.join(directory, filename), 'r') as file:
                 movie_data = json.load(file)
+                movie_id = movie_data.get('movie_id')
                 genres = [genre['name'] for genre in movie_data.get("genres", [])]
                 budget = movie_data.get("budget")
                 popularity = movie_data.get("popularity")
@@ -56,6 +63,7 @@ def extract_from_json(directory: str):
                 overview = movie_data.get("overview")
 
                 data.append({
+                    "movie_id": movie_id,
                     "genres": ", ".join(genres),
                     "budget": budget,
                     "popularity": popularity,
@@ -75,7 +83,7 @@ def extract_from_json(directory: str):
 
 if __name__ == '__main__':
     # scrap_to_json()
-    # extract_from_json("movies")
+    extract_from_json("movies")
 
     train = pd.read_csv("train.csv", sep=';', header=None)
     train.columns = ['id', 'user_id', 'movie_id', "grade"]
