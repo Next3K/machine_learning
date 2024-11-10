@@ -12,13 +12,13 @@ def create_vector(movies):
     votes.name = "votes"
     normalized_votes = normalize(votes)
     date = normalize(movies.get("release_date"))
+
     result = pd.concat([movies.get("movie_id"),
                         budget, popularity, date, revenue,
                         runtime, vote_average, vote_count, normalized_votes,
                         movies.get("genres"),
                         movies.get("production_companies"),
-                        movies.get("production_countries"),
-                        movies.get("overview"),
+                        movies.get("production_countries")
                         ], axis=1)
     return result
 
@@ -28,7 +28,6 @@ def normalize(column):
     min_value = min(column)
     column = (column - min_value)/(max_value - min_value)
     return column
-
 
 
 def save_vector(vector):
