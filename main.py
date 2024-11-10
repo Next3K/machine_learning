@@ -7,13 +7,13 @@ import os
 import json
 import pandas as pd
 
-API_KEY = "your-api-key"
+API_KEY = "api-key"
 
 
-def scrap_to_json(directory: str):
-    data = pd.read_csv("movie.csv")
+def scrap_to_json():
+    data = pd.read_csv("movie.csv", sep=";")
     data.columns = ['1', '2', '3']
-    ids = data['2'].toSet()
+    ids = data['2'].to_list()
 
     url_template = "https://api.themoviedb.org/3/movie/{}?api_key=" + API_KEY
     headers = {
@@ -26,7 +26,7 @@ def scrap_to_json(directory: str):
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             movie_data = response.json()
-            file_path = os.path.join(directory, f"movie_{movie_id}.json")
+            file_path = os.path.join("movies", f"movie_{movie_id}.json")
             with open(file_path, "w") as json_file:
                 json.dump(movie_data, json_file, indent=4)
             print(f"Saved data for movie ID {movie_id}")
@@ -74,7 +74,7 @@ def extract_from_json(directory: str):
 
 
 if __name__ == '__main__':
-    # scrap_to_json("movies")
+    # scrap_to_json()
     # extract_from_json("movies")
 
     train = pd.read_csv("train.csv", sep=';', header=None)
