@@ -7,28 +7,30 @@ import csv
 import os
 import json
 import pandas as pd
+from pandas import Series
+from pandas.core.interchange.dataframe_protocol import DataFrame
 
 API_KEY = "api-key"
 
 
 class Knn:
-    def __init__(self, k, mask):
+    def __init__(self,
+                 k: int,
+                 mask: [int],
+                 use_average: bool,
+                 dataset: DataFrame):
         self.mask = mask
         self.k = k
-        self.train_data = None
+        self.use_average = use_average
+        # first column is a grade, the next columns are (12) features of the movie
+        # grade, budget, popularity, release_date, revenue, runtime, vote_average, vote_count, votes, genres, production_companies, production_countries, overview
+        self.dataset = dataset
 
-    @staticmethod
-    def metric(a, b, mask: [int]):
-        # TODO impl
-        return 1.0
-
-    def predict(self, x) -> int:
-        # TODO impl
-        return 3
-
-    def train(self, dataframe):
-        # TODO impl
-        self.train_data = dataframe
+    # series is just a single row from dataframe. The columns (12) are:
+    # budget, popularity, release_date, revenue, runtime, vote_average, vote_count, votes, genres, production_companies, production_countries, overview
+    # return expected grade
+    def predict(self, x: Series) -> int:
+        return random.randint(1, 5)
 
 
 def scrap_to_json():
@@ -112,29 +114,53 @@ if __name__ == '__main__':
     # scrap_to_json()
     # extract_from_json("movies")
 
-    train = pd.read_csv("train.csv", sep=';', header=None)
-    train.columns = ['id', 'user_id', 'movie_id', "grade"]
-    extracted_movies = pd.read_csv("extracted_movies.csv")
-    dataframe_per_user = {user_id: group_df for user_id, group_df in train.groupby('user_id')}
+    raw_train_data = pd.read_csv("train.csv", sep=';', header=None)
+    raw_train_data.columns = ['id', 'user_id', 'movie_id', "grade"]
+
+    raw_task_data = pd.read_csv("task.csv", sep=';', header=None)
+    raw_task_data.columns = ['id', 'user_id', 'movie_id', "grade"]
+
+    movie_vectors = pd.read_csv("vector.csv")
+
+    full_train_data = raw_train_data.merge(movie_vectors, on='movie_id', how='left')
+
+    user_dataframe_map = {user_id:
+                              group_df for user_id, group_df
+                          in full_train_data.groupby('user_id')}
+
+    for user_id, dataframe in user_dataframe_map.items():
+        dataframe.drop(columns=['id', 'user_id', 'movie_id'], inplace=True)
+
+    full_task_data = raw_task_data.merge(movie_vectors, on='movie_id', how='left')
+    full_task_data.drop(columns=['id', 'grade', 'user_id', 'movie_id'], inplace=True)
 
     # find the best possible knn for every user
     KNNs: {int, Knn} = {}
-    for user_id, dataframe in dataframe_per_user.items():
+    for user_id, dataframe in user_dataframe_map.items():
         best_knn: Knn = None
         best_score: float = .0
         for k in [1, 3, 5, 7, 11]:
-            for i in range(20):
-                mask = [1 if i in
-                             random.sample(range(13), random.randint(3, 8))
-                        else 0 for i in range(13)]
+            print(f"Testing k: {k}")
+            for i in range(10):
+                for use_average in [True, False]:
+                    mask = [1 if i in
+                                 random.sample(range(13), random.randint(3, 8))
+                            else 0 for i in range(12)]
 
-                knn = Knn(k=k, mask=mask)
-                knn.train(train)
-                # TODO evaluate knn with cross validation etc
-                current_score = 0
-                if current_score > best_score:
-                    best_score = current_score
-                    best_knn = knn
+                    knn = Knn(k=k,
+                              mask=mask,
+                              use_average=use_average,
+                              dataset=dataframe)
+
+                    # TODO cross validation
+
+                    example_row: Series = full_task_data.iloc[2]
+                    predicted_grade: int = knn.predict(example_row)
+
+                    current_score = 1
+                    if current_score > best_score:
+                        best_score = current_score
+                        best_knn = knn
         KNNs[user_id] = best_knn
 
     # fill task.csv
