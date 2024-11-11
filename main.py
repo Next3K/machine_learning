@@ -8,29 +8,10 @@ import os
 import json
 import pandas as pd
 from pandas import Series
-from pandas.core.interchange.dataframe_protocol import DataFrame
+from Knn import Knn
 
 API_KEY = "api-key"
 
-
-class Knn:
-    def __init__(self,
-                 k: int,
-                 mask: [int],
-                 use_average: bool,
-                 dataset: DataFrame):
-        self.mask = mask
-        self.k = k
-        self.use_average = use_average
-        # first column is a grade, the next columns are (12) features of the movie
-        # grade, budget, popularity, release_date, revenue, runtime, vote_average, vote_count, votes, genres, production_companies, production_countries, overview
-        self.dataset = dataset
-
-    # series is just a single row from dataframe. The columns (12) are:
-    # budget, popularity, release_date, revenue, runtime, vote_average, vote_count, votes, genres, production_companies, production_countries, overview
-    # return expected grade
-    def predict(self, x: Series) -> int:
-        return random.randint(1, 5)
 
 
 def scrap_to_json():
@@ -141,7 +122,7 @@ if __name__ == '__main__':
         best_score: float = .0
         for k in [1, 3, 5, 7, 11]:
             print(f"Testing k: {k}")
-            for i in range(10):
+            for i in range(1):
                 for use_average in [True, False]:
                     mask = [1 if i in
                                  random.sample(range(13), random.randint(3, 8))
@@ -156,7 +137,7 @@ if __name__ == '__main__':
 
                     example_row: Series = full_task_data.iloc[2]
                     predicted_grade: int = knn.predict(example_row)
-
+                    print(predicted_grade)
                     current_score = 1
                     if current_score > best_score:
                         best_score = current_score

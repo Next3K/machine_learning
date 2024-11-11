@@ -1,4 +1,6 @@
 import math
+import numpy as np
+from ast import literal_eval
 
 
 def split_sentences_to_words(documents):
@@ -43,18 +45,34 @@ def calculate_tfidf(documents):
         tfidf = {word: tf * idf_dict[word] for word, tf in tf_dict.items()}
         tfidf_docs.append(tfidf)
 
-    return list(tfidf_docs)
+    return tfidf_docs
 
 
-def get_highest_value_from_tfidf(dict1, dict2):
-    common_words = set(dict1.keys()) & set(dict2.keys())
-    values = []
-    for word in common_words:
-        values.append(dict1[word])
-        values.append(dict2[word])
-    if len(values) == 0:
-        return 0
-    return max(values)
+def get_tokens(doc_1, doc_2):
+    return list(set(doc_1.keys()).union(set(doc_2.keys())))
 
 
+def dict_to_vector(doc, tokens):
+    vector = np.zeros(len(tokens))
+    token_to_idx = {token: idx for idx, token in enumerate(tokens)}
+    for token, value in doc.items():
+        if token in token_to_idx:
+            vector[token_to_idx[token]] = value
+    return vector
 
+
+def cos_sim(vector_1, vector_2):
+    dot_product = np.dot(vector_1, vector_2)
+    vec_1_len = np.linalg.norm(vector_1)
+    vec_2_len = np.linalg.norm(vector_2)
+    similarity = dot_product / (vec_1_len * vec_2_len)
+    return similarity
+
+
+def calculate_value_between_docs(doc_1, doc_2):
+    doc_1 = literal_eval(doc_1)
+    doc_2 = literal_eval(doc_2)
+    tokens = get_tokens(doc_1, doc_2)
+    vector_1 = dict_to_vector(doc_1, tokens)
+    vector_2 = dict_to_vector(doc_2, tokens)
+    return cos_sim(vector_1, vector_2)
