@@ -1,5 +1,5 @@
 import pandas as pd
-
+from tfidf import calculate_tfidf
 
 def create_vector(movies):
     budget = normalize(movies.get("budget"))
@@ -12,13 +12,18 @@ def create_vector(movies):
     votes.name = "votes"
     normalized_votes = normalize(votes)
     date = normalize(movies.get("release_date"))
+    overview = calculate_tfidf(movies.get("overview"))
+    print(str(overview[0]))
+    overview_df = pd.DataFrame({'overview': overview})
+    print(overview)
+    print(overview_df)
     result = pd.concat([movies.get("movie_id"),
                         budget, popularity, date, revenue,
                         runtime, vote_average, vote_count, normalized_votes,
                         movies.get("genres"),
                         movies.get("production_companies"),
                         movies.get("production_countries"),
-                        movies.get("overview"),
+                        overview_df
                         ], axis=1)
     return result
 
@@ -28,7 +33,6 @@ def normalize(column):
     min_value = min(column)
     column = (column - min_value)/(max_value - min_value)
     return column
-
 
 
 def save_vector(vector):
