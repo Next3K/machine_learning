@@ -105,9 +105,19 @@ def extract_from_json(directory: str):
 
 
 def fill_task_csv(model: {int, Knn}):
-    # TODO implement
     task = pd.read_csv("task.csv", sep=';', header=None)
     task.columns = ['id', 'user_id', 'movie_id', "grade"]
+    movie_vectors = pd.read_csv("vector.csv")
+    task_features = task.merge(movie_vectors, on='movie_id', how='left')
+    task_features.drop(columns=['id', 'grade', 'user_id', 'movie_id'], inplace=True)
+
+    for index, row in task.iterrows():
+        user_id = row['user_id'].astype(int)
+        task.at[index, 'grade'] = model[user_id].predict(task_features.iloc[index])
+
+    task = task.astype(int)
+    task.to_csv("submission.csv", index=False, header=False)
+
 
 
 if __name__ == '__main__':
@@ -117,12 +127,7 @@ if __name__ == '__main__':
     raw_train_data = pd.read_csv("train.csv", sep=';', header=None)
     raw_train_data.columns = ['id', 'user_id', 'movie_id', "grade"]
 
-    raw_task_data = pd.read_csv("task.csv", sep=';', header=None)
-    raw_task_data.columns = ['id', 'user_id', 'movie_id', "grade"]
-
-    movie_vectors = pd.read_csv("vector.csv")
-
-    full_train_data = raw_train_data.merge(movie_vectors, on='movie_id', how='left')
+    full_train_data = raw_train_data.merge(pd.read_csv("vector.csv"), on='movie_id', how='left')
 
     user_dataframe_map = {user_id:
                               group_df for user_id, group_df
@@ -131,8 +136,6 @@ if __name__ == '__main__':
     for user_id, dataframe in user_dataframe_map.items():
         dataframe.drop(columns=['id', 'user_id', 'movie_id'], inplace=True)
 
-    full_task_data = raw_task_data.merge(movie_vectors, on='movie_id', how='left')
-    full_task_data.drop(columns=['id', 'grade', 'user_id', 'movie_id'], inplace=True)
 
     # find the best possible knn for every user
     KNNs: {int, Knn} = {}
@@ -153,9 +156,6 @@ if __name__ == '__main__':
                               dataset=dataframe)
 
                     # TODO cross validation
-
-                    example_row: Series = full_task_data.iloc[2]
-                    predicted_grade: int = knn.predict(example_row)
 
                     current_score = 1
                     if current_score > best_score:
