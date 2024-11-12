@@ -1,3 +1,4 @@
+import heapq
 import random
 import numpy as np
 from pandas import Series
@@ -23,10 +24,11 @@ class Knn:
     # return expected grade
     def predict(self, x: Series) -> int:
         distances = calculate_total_distances(x, self.dataset, self.mask)
-        idx = np.argsort(distances)[:self.k]
-        #print(idx)
+        idx = heapq.nsmallest(self.k, range(len(distances)), key=lambda i: distances[i])
+
+        #distances = calculate_total_distances(x, self.dataset, self.mask)
+        #idx = np.argsort(distances)[:self.k]
+
         if self.use_average:
-            #print("Approximating Average Value:")
             return get_average(idx, self.dataset)
-        #print("Approximating Label:")
         return get_label(idx, self.dataset)
