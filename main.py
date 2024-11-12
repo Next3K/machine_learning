@@ -1,3 +1,7 @@
+import math
+import statistics
+
+import numpy as np
 import requests
 import random
 from datetime import datetime
@@ -119,7 +123,6 @@ def fill_task_csv(model: {int, Knn}):
     task.to_csv("submission.csv", index=False, header=False)
 
 
-
 if __name__ == '__main__':
     # scrap_to_json()
     # extract_from_json("movies")
@@ -136,31 +139,43 @@ if __name__ == '__main__':
     for user_id, dataframe in user_dataframe_map.items():
         dataframe.drop(columns=['id', 'user_id', 'movie_id'], inplace=True)
 
-
     # find the best possible knn for every user
     KNNs: {int, Knn} = {}
-    for user_id, dataframe in user_dataframe_map.items():
+    for num, (user_id, dataframe) in enumerate(user_dataframe_map.items(), 1):
+        print(f"Testing {num}/358")
         best_knn: Knn = None
         best_score: float = .0
         for k in [1, 3, 5, 7, 11]:
-            print(f"Testing k: {k}")
             for i in range(10):
                 for use_average in [True, False]:
                     mask = [1 if i in
                                  random.sample(range(13), random.randint(3, 8))
                             else 0 for i in range(12)]
+                    dfs: [DataFrame] = np.array_split(dataframe, 5)
 
-                    knn = Knn(k=k,
-                              mask=mask,
-                              use_average=use_average,
-                              dataset=dataframe)
+                    scores: [float] = []
+                    for n in range(5):
+                        test_portion = dfs[n]
+                        train_portion = dfs[:n] + dfs[n + 1:]
+                        knn = Knn(k=k,
+                                  mask=mask,
+                                  use_average=use_average,
+                                  dataset=pd.concat(train_portion, ignore_index=True))
+                        total_elems, correct = len(test_portion), 0
+                        for z in range(total_elems):
+                            row = test_portion.iloc[z, 1:]
+                            predicted = test_portion.iloc[z]['grade']
+                            if knn.predict(row) == predicted:
+                                correct += 1
+                        scores.append(correct / total_elems)
 
-                    # TODO cross validation
-
-                    current_score = 1
+                    current_score = statistics.mean(scores)
                     if current_score > best_score:
                         best_score = current_score
-                        best_knn = knn
+                        best_knn = Knn(k=k,
+                                       mask=mask,
+                                       use_average=use_average,
+                                       dataset=dataframe)
         KNNs[user_id] = best_knn
 
     # fill task.csv
