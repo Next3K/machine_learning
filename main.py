@@ -131,7 +131,7 @@ if __name__ == '__main__':
                 print(f"k={k}: {i+1}/10")
                 for use_average in [True, False]:
                     mask = [1 if i in
-                                 random.sample(range(13), random.randint(3, 8))
+                                 random.sample(range(12), random.randint(3, 8))
                             else 0 for i in range(12)]
                     dfs: [DataFrame] = np.array_split(dataframe, 5)
 
