@@ -101,7 +101,7 @@ def fill_task_csv(model: {int, Knn}):
         task.at[index, 'grade'] = model[user_id].predict(task_features.iloc[index])
 
     task = task.astype(int)
-    task.to_csv("submission.csv", index=False, header=False)
+    task.to_csv("submission.csv", index=False, header=False, sep=";")
 
 
 if __name__ == '__main__':
