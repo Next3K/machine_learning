@@ -1,10 +1,9 @@
-class Model:
-    class_attribute = "some value"
+from abc import ABC, abstractmethod
 
-    def __init__(self, k: int, mask: [bool]):
-        self.k = k
-        self.mask = mask
+import pandas as pd
 
-    def method_name(self):
-        return f"Attributes: {self.k} and {self.mask}"
-     
+
+class Model(ABC):
+    @abstractmethod
+    def predict(self, data: pd.DataFrame) -> int:
+        pass
