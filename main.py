@@ -19,6 +19,7 @@ NUM_OF_PARTITIONS: int = 8
 API_KEY = "api-key"
 NUM_OF_WORKERS = os.cpu_count() or 10
 
+
 def get_measure(dataframe: pd.DataFrame, column: str, decision: float, criterion: str) -> float:
     measure: float = 0
     left = dataframe[dataframe[column] < decision]
@@ -143,8 +144,17 @@ class Forrest(Model):
     def create_trees(self):
         trees = []
         for _ in range(self.num_of_trees):
-            mask: [int] = [1] + [1 if i in random.sample(range(7), random.randint(3, 5)) else 0 for i in range(7)]
+            def generate_bit_mask(length=6, num_ones=3):
+                bit_mask = [0] * length
+                ones_positions = random.sample(range(length), num_ones)
+                for pos in ones_positions:
+                    bit_mask[pos] = 1
+                return bit_mask
+
+            mask: [int] = [1] + generate_bit_mask(6, 3)
             columns_to_select = [i for i, m in enumerate(mask) if m == 1]
+            if len(columns_to_select) == 1:
+                exit(-1)
             data_less_cols = self.data.iloc[:, columns_to_select]
             data_subset = data_less_cols.sample(n=(len(self.data) + self.bootstrap_number), replace=True)
             trees.append(Tree(5, 7, 3, 'entropy', data_subset))
@@ -286,7 +296,6 @@ def parallel_forrest(user_id, dataframe) -> (int, "Forrest"):
     best_forrest: Forrest = None
     best_score: float = 0.0
 
-    # Hyperparameter tuning
     for number_of_trees in [3, 5, 7]:
         for bootstrap_percent in [20, 30, 50]:
             print(f"User {user_id}: {number_of_trees} - {bootstrap_percent}")
@@ -319,6 +328,37 @@ def parallel_forrest(user_id, dataframe) -> (int, "Forrest"):
     return user_id, best_forrest
 
 
+def parallel_trees(user_id, dataframe):
+    best_tree = None
+    best_score = 0.0
+
+    for max_tree_depth in [3, 7, 10]:
+        for min_samples_split in [5, 7, 10, 13]:
+            for min_samples_leaf in [5, 7, 10, 13]:
+                for criterion in ["gini", "entropy"]:
+                    n = len(dataframe) // 5
+                    dfs = [
+                        dataframe[:n],
+                        dataframe[n: 2 * n],
+                        dataframe[2 * n: 3 * n],
+                        dataframe[3 * n: 4 * n],
+                        dataframe[4 * n:],
+                    ]
+                    scores = []
+                    for n in range(5):
+                        test_portion = dfs[n]
+                        train_portion = pd.concat(dfs[:n] + dfs[n + 1:], ignore_index=True)
+                        tree = Tree(max_tree_depth, min_samples_split, min_samples_leaf, criterion, train_portion)
+                        scores.append(get_score(test_portion, tree))
+
+                    current_score = statistics.mean(scores)
+                    if current_score > best_score:
+                        best_score, best_tree = current_score, Tree(max_tree_depth, min_samples_split,
+                                                                    min_samples_leaf, criterion, dataframe)
+
+    return user_id, best_tree
+
+
 if __name__ == '__main__':
     # scrap_to_json()
     # extract_from_json("movies")
@@ -327,7 +367,7 @@ if __name__ == '__main__':
     raw_train_data = pd.read_csv("train.csv", sep=';', header=None)
     raw_train_data.columns = ['id', 'user_id', 'movie_id', "grade"]
 
-    full_train_data = raw_train_data.merge(pd.read_csv("vector.csv"), on='movie_id', how='left')
+    full_train_data = raw_train_data.merge(pd.read_csv("extracted_movies.csv"), on='movie_id', how='left')
 
     user_dataframe_map = {user_id:
                               group_df for user_id, group_df
@@ -336,6 +376,32 @@ if __name__ == '__main__':
     for user_id, dataframe in user_dataframe_map.items():
         dataframe.drop(columns=['id', 'user_id', 'release_date', 'movie_id', 'genres', 'production_companies',
                                 'production_countries', 'overview'], inplace=True)
+
+    # sequential trees
+    # for user_id, dataframe in user_dataframe_map.items():
+    #     parallel_trees(user_id=user_id, dataframe=dataframe)
+
+    # sequential forest
+    # for user_id, dataframe in user_dataframe_map.items():
+    #     parallel_forrest(user_id=user_id, dataframe=dataframe)
+
+    best_tree_per_user = {}
+    with concurrent.futures.ProcessPoolExecutor(max_workers=NUM_OF_WORKERS) as executor:
+        futures = []
+        for user_id, dataframe in user_dataframe_map.items():
+            futures.append(executor.submit(parallel_trees, user_id, dataframe))
+
+        for num, future in enumerate(concurrent.futures.as_completed(futures), 1):
+            user_id, best_tree = future.result()
+            best_tree_per_user[user_id] = best_tree
+            print(f"Finished training forest for user: {num}/358")
+
+    fill_csv(best_tree_per_user, "submission_tree.csv")
+
+    print_tree(best_tree_per_user[13], "tree13")
+    print_tree(best_tree_per_user[17], "tree17")
+    print_tree(best_tree_per_user[19], "tree19")
+    print_tree(best_tree_per_user[21], "tree21")
 
     best_forrest_per_user: {int, Model} = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=NUM_OF_WORKERS) as executor:
@@ -348,41 +414,5 @@ if __name__ == '__main__':
             user_id, best_forrest = future.result()
             best_forrest_per_user[user_id] = best_forrest
             print(f"Finished training forest for user: {num}/358")
+
     fill_csv(best_forrest_per_user, "submission_forrest.csv")
-    print("Forests done!")
-
-    # find the best possible knn for every user
-    best_tree_per_user: {int, Tree} = {}
-    for num, (user_id, dataframe) in enumerate(user_dataframe_map.items(), 1):
-        print(f"Training tree: {num}/358")
-        best_tree: Tree = None
-        best_score: float = .0
-        for max_tree_depth in [3, 7, 10]:
-            for min_samples_split in [5, 7, 10, 13]:
-                print(f'{max_tree_depth}-{min_samples_split}')
-                for min_samples_leaf in [5, 7, 10, 13]:
-                    for criterion in ["gini", "entropy"]:
-                        n = len(dataframe) // 5
-                        dfs: List[pd.DataFrame] = [
-                            dataframe[:n],
-                            dataframe[n: 2 * n],
-                            dataframe[2 * n: 3 * n],
-                            dataframe[3 * n: 4 * n],
-                            dataframe[4 * n:],
-                        ]
-                        scores: [float] = []
-                        for n in range(5):
-                            test_portion = dfs[n]
-                            train_portion = pd.concat(dfs[:n] + dfs[n + 1:], ignore_index=True)
-                            tree = Tree(max_tree_depth, min_samples_split, min_samples_leaf, criterion, train_portion)
-                            scores.append(get_score(test_portion, tree))
-                        current_score = statistics.mean(scores)
-
-                        if current_score > best_score:
-                            best_score, best_tree = current_score, Tree(max_tree_depth, min_samples_split,
-                                                                        min_samples_leaf, criterion, dataframe)
-
-        best_tree_per_user[user_id] = best_tree
-    fill_csv(best_tree_per_user, "submission_tree.csv")
-    print("Trees done!")
-    print_tree(best_tree_per_user[13], "tree")
