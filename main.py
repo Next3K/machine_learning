@@ -6,17 +6,17 @@ import pandas as pd
 import numpy as np
 
 
-def fill_task_csv(df: pd.DataFrame, hyperparams_per_user: {str, (int, str, str)}):
+def fill_task_csv(df: pd.DataFrame, hyperparams_per_user: {str: (int, str, str)}):
     task = pd.read_csv("task.csv", sep=';', header=None)
     task.columns = ['id', 'user_id', 'movie_id', "grade"]
     for i in range(len(task)):
-        user_id: str = task.iloc[i]['user_id']
-        movie_id: str = task.iloc[i]['movie_id']
+        user_id = str(int(task.iloc[i]['user_id']))
+        movie_id = str(int(task.iloc[i]['movie_id']))
         k, measure, strategy = hyperparams_per_user[user_id]
         predicted: int = grade(user_id, movie_id, df, k, measure, strategy)
-        task.iloc[i]["grade"] = predicted
-    df = df.astype(int)
-    df.to_csv("submission.csv", index=False, header=False, sep=";")
+        task.loc[i, "grade"] = predicted
+    task = task.astype(int)
+    task.to_csv("submission.csv", index=False, header=False, sep=";")
 
 
 def choice(grades: [int], strategy: str) -> int:
@@ -54,9 +54,11 @@ def manhattan(row1, row2):
 
 
 def grade(user_id: str, movie_id: str, df: pd.DataFrame, k: int, measure: str, strategy: str) -> int:
+    df.columns = df.columns.astype(str)
+    df.index = df.index.astype(str)
     df = df.T
-    df = df[df[movie_id].notna()]
     my_row = df.loc[user_id]
+    df = df[(df[movie_id].notna())]
     distances = []
     for idx, row in df.iterrows():
         if idx != user_id:
@@ -82,26 +84,10 @@ def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame) -> (int, str, st
     best_k, best_metric, best_strategy = 1, None, None
     best_score: float = 0.0
 
-    for k in [1, 3, 11, 31, 97]:
+    for k in [1, 7, 37, 97]:
         for measure in ["manhattan", "euclidean"]:
             for strategy in ["mean", "dominant", "random"]:
-                # dataframe = dataframe.sample(frac=1, random_state=42).reset_index(drop=True)
-                # dataframe = dataframe.dropna(subset=[user_id])
-                # n = len(dataframe) // 5
-                # dfs = [
-                #     dataframe[:n],
-                #     dataframe[n: 2 * n],
-                #     dataframe[2 * n: 3 * n],
-                #     dataframe[3 * n: 4 * n],
-                #     dataframe[4 * n:],
-                # ]
-                # scores = []
-                # for n in range(5):
-                #     test_portion = dfs[n]
-                #     train_portion = pd.concat(dfs[:n] + dfs[n + 1:], ignore_index=True)
-                #     scores.append(get_score(user_id, train_portion, test_portion, k, measure, strategy))
                 current_score = get_score(user_id, dataframe, dataframe.dropna(subset=[user_id]), k, measure, strategy)
-                # current_score = statistics.mean(scores)
                 if current_score > best_score:
                     best_score = current_score
                     best_k, best_metric, best_strategy = k, measure, strategy
@@ -113,20 +99,19 @@ if __name__ == '__main__':
     train = pd.read_csv("train.csv", sep=';', header=None)
     train.columns = ['id', 'user_id', 'movie_id', "grade"]
     train = train.drop('id', axis=1)
-    train: pd.DataFrame = train.pivot(index='movie_id', columns='user_id', values='grade')
+    train = train.pivot(index='movie_id', columns='user_id', values='grade')
     train.index = train.index.astype(str)
     train.columns = train.columns.astype(str)
 
-    # Hyperparam optimization
-    hyperparams_per_user: {str, (int, str, str)} = {}
+    futures = {}
+    ids = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-        futures = []
         for user_id in train.columns:
-            futures.append(executor.submit(hyperparams_for_user, user_id, train))
+            futures[user_id] = executor.submit(hyperparams_for_user, user_id, train)
 
-        for num, future in enumerate(concurrent.futures.as_completed(futures), 1):
-            user_id, best_tree = future.result()
-            hyperparams_per_user[user_id] = best_tree
-            print(f"Finished training tree: {num}/358")
+        hyperparams_per_user = {}
+        for future in concurrent.futures.as_completed(futures.values()):
+            user_id = next(key for key, value in futures.items() if value == future)
+            hyperparams_per_user[user_id] = future.result()
 
     fill_task_csv(train, hyperparams_per_user)
