@@ -1,9 +1,13 @@
 import json
 import time
 from datetime import datetime
+
+import numpy as np
 import requests
 import pandas as pd
 import os
+
+from sklearn.metrics import confusion_matrix
 
 API_KEY = "api-key"
 
@@ -77,3 +81,22 @@ def extract_from_json(directory: str):
 
     df = pd.DataFrame(data)
     df.to_csv("extracted_movies.csv", index=False)
+
+def evaluate_predictions(list1, list2):
+    if len(list1) != len(list2):
+        raise ValueError("Both lists must have the same length.")
+
+    arr1 = np.array(list1)
+    arr2 = np.array(list2)
+
+    accuracy = np.mean(arr1 == arr2) * 100
+    accuracy_plus_minus = np.mean(np.abs(arr1 - arr2) <= 1) * 100
+    average_abs_error = np.mean(np.abs(arr1 - arr2))
+    matrix_error = confusion_matrix(arr1, arr2, labels=[0, 1, 2, 3, 4, 5])
+
+    return {
+        "accuracy": accuracy,
+        "accuracy_plus_minus": accuracy_plus_minus,
+        "average_abs_error": average_abs_error,
+        "matrix_error": matrix_error
+    }
