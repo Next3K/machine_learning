@@ -17,7 +17,7 @@ import os
 from Tree import Tree
 from Forrest import Forrest
 
-NUM_OF_WORKERS = os.cpu_count() or 10
+NUM_OF_WORKERS = os.cpu_count()
 
 
 def print_tree(root: Tree, filename):
@@ -184,7 +184,7 @@ if __name__ == '__main__':
             user_id, best_forrest = future.result()
             best_forrest_per_user[user_id] = best_forrest
             print(f"Finished training forest: {num}/358")
-    fill_csv(best_forrest_per_user, "submission_forrest.csv")
+    fill_csv(best_forrest_per_user, "submission_forest.csv")
 
     # generate PNGs
     for i in range(50):
