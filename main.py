@@ -27,7 +27,7 @@ def check_dir():
 
 def confusion_matrix_display(matrix, title):
     check_dir()
-    disp = ConfusionMatrixDisplay(matrix, display_labels=["1", "2", "3", "4", "5", "6"])
+    disp = ConfusionMatrixDisplay(matrix, display_labels=["0","1", "2", "3", "4", "5"])
     disp.plot(cmap="Blues", values_format="d")
     plt.title(f"{title}")
     plt.savefig(f"charts/{title}.png", dpi=300)
@@ -48,3 +48,15 @@ if __name__ == '__main__':
     confusion_matrix_display(matrix, "Person similarity - dodatkowy test I")
     matrix = get_file("feedback_7")[0]
     confusion_matrix_display(matrix, "Person similarity - dodatkowy test II")
+    matrix = get_file("feedback_forest_test")[0]
+    confusion_matrix_display(matrix, "Forest (train)")
+    matrix = get_file("feedback_forest_validation")[0]
+    confusion_matrix_display(matrix, "Forest (validation)")
+    matrix = get_file("feedback_trees_test")[0]
+    confusion_matrix_display(matrix, "Trees (train)")
+    matrix = get_file("feedback_trees_validation")[0]
+    confusion_matrix_display(matrix, "Trees (validation)")
+    matrix = get_file("feedback_knn_test")[0]
+    confusion_matrix_display(matrix, "KNN (train)")
+    matrix = get_file("feedback_knn_validation")[0]
+    confusion_matrix_display(matrix, "KNN (validation)")
