@@ -60,3 +60,11 @@ if __name__ == '__main__':
     confusion_matrix_display(matrix, "KNN (train)")
     matrix = get_file("feedback_knn_validation")[0]
     confusion_matrix_display(matrix, "KNN (validation)")
+    matrix = get_file("feedback_person_sim_test")[0]
+    confusion_matrix_display(matrix, "Person similarity (train)")
+    matrix = get_file("feedback_person_sim_valid")[0]
+    confusion_matrix_display(matrix, "Person similarity (validation)")
+    matrix = get_file("feedback_person_sim_valid")[0]
+    confusion_matrix_display(matrix, "Person similarity (validation)")
+    matrix = get_file("feedback_8")[0]
+    confusion_matrix_display(matrix, "Collaborative Filtering")
