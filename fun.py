@@ -55,3 +55,27 @@ def get_label(idx, dataset):
             labels_dict[label] = 1
     common_labels = [label for label, count in labels_dict.items() if count == max(labels_dict.values())]
     return common_labels[0]
+
+
+import numpy as np
+from sklearn.metrics import confusion_matrix
+
+
+def evaluate_predictions(list1, list2):
+    if len(list1) != len(list2):
+        raise ValueError("Both lists must have the same length.")
+
+    arr1 = np.array(list1)
+    arr2 = np.array(list2)
+
+    accuracy = np.mean(arr1 == arr2) * 100
+    accuracy_plus_minus = np.mean(np.abs(arr1 - arr2) <= 1) * 100
+    average_abs_error = np.mean(np.abs(arr1 - arr2))
+    matrix_error = confusion_matrix(arr1, arr2, labels=[0, 1, 2, 3, 4, 5])
+
+    return {
+        "accuracy": accuracy,
+        "accuracy_plus_minus": accuracy_plus_minus,
+        "average_abs_error": average_abs_error,
+        "matrix_error": matrix_error
+    }

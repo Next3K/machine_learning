@@ -13,6 +13,10 @@ import json
 import pandas as pd
 from pandas import Series
 from pandas.core.interchange.dataframe_protocol import DataFrame
+from sklearn.model_selection import train_test_split
+from sympy.logic.inference import valid
+from fun import evaluate_predictions
+
 from Knn import Knn
 
 API_KEY = "api-key"
@@ -112,6 +116,7 @@ if __name__ == '__main__':
     raw_train_data.columns = ['id', 'user_id', 'movie_id', "grade"]
 
     full_train_data = raw_train_data.merge(pd.read_csv("vector.csv"), on='movie_id', how='left')
+    full_train_data, validate = train_test_split(full_train_data, test_size=0.2, random_state=42)
 
     user_dataframe_map = {user_id:
                               group_df for user_id, group_df
@@ -120,15 +125,18 @@ if __name__ == '__main__':
     for user_id, dataframe in user_dataframe_map.items():
         dataframe.drop(columns=['id', 'user_id', 'movie_id'], inplace=True)
 
+
     # find the best possible knn for every user
     KNNs: {int, Knn} = {}
+    KNNs_testwise: {int, Knn} = {}
     for num, (user_id, dataframe) in enumerate(user_dataframe_map.items(), 1):
         print(f"Testing {num}/358")
         best_knn: Knn = None
+        best_knn_testwise: Knn = None
         best_score: float = .0
-        for k in [1, 3, 5, 7, 11]:
-            for i in range(10):
-                print(f"k={k}: {i+1}/10")
+        for k in [5]:
+            for i in range(1):
+                print(f"k={k}: {i + 1}/10")
                 for use_average in [True, False]:
                     mask = [1 if i in
                                  random.sample(range(12), random.randint(3, 8))
@@ -136,29 +144,62 @@ if __name__ == '__main__':
                     dfs: [DataFrame] = np.array_split(dataframe, 5)
 
                     scores: [float] = []
+                    tmp: Knn = None
                     for n in range(5):
                         test_portion = dfs[n]
                         train_portion = dfs[:n] + dfs[n + 1:]
+
                         knn = Knn(k=k,
                                   mask=mask,
                                   use_average=use_average,
                                   dataset=pd.concat(train_portion, ignore_index=True))
+                        tmp = knn
                         total_elems, correct = len(test_portion), 0
                         for z in range(total_elems):
                             row = test_portion.iloc[z, 1:]
-                            predicted = test_portion.iloc[z]['grade']
-                            if knn.predict(row) == predicted:
+                            expected = test_portion.iloc[z]['grade']
+                            predicted = knn.predict(row)
+                            if predicted == expected:
                                 correct += 1
                         scores.append(correct / total_elems)
 
                     current_score = statistics.mean(scores)
                     if current_score > best_score:
                         best_score = current_score
+                        best_knn_testwise = tmp
                         best_knn = Knn(k=k,
                                        mask=mask,
                                        use_average=use_average,
                                        dataset=dataframe)
         KNNs[user_id] = best_knn
+        KNNs_testwise[user_id] = best_knn_testwise
+
+    print(f"+++++++++++++++++++VALIDATION RESULTS+++++++++++++++++++")
+    predicted = []
+    expected = []
+    validate.drop(columns=['id', 'movie_id'], inplace=True)
+    for z in range(len(validate)):
+        row = validate.iloc[z, 2:]
+        user_id = validate.iloc[z]['user_id']
+        exp = validate.iloc[z]['grade']
+        pred = KNNs[user_id].predict(row)
+        expected.append(exp)
+        predicted.append(pred)
+    print(evaluate_predictions(expected, predicted))
+
+    print(f"+++++++++++++++++++TESTWISE RESULTS+++++++++++++++++++")
+    predicted = []
+    expected = []
+    full_train_data.drop(columns=['id', 'movie_id'], inplace=True)
+    _ , test_portion = train_test_split(full_train_data, test_size=0.2, random_state=42)
+    for z in range(len(test_portion)):
+        row = test_portion.iloc[z, 2:]
+        user_id = test_portion.iloc[z]['user_id']
+        exp = test_portion.iloc[z]['grade']
+        pred = KNNs_testwise[user_id].predict(row)
+        expected.append(exp)
+        predicted.append(pred)
+    print(evaluate_predictions(expected, predicted))
 
     # fill task.csv
     fill_task_csv(KNNs)
