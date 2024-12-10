@@ -4,6 +4,7 @@ import os
 import random
 import pandas as pd
 import numpy as np
+from sklearn.metrics import confusion_matrix
 
 
 def fill_task_csv(df: pd.DataFrame, hyperparams_per_user: {str: (int, str, str)}):
@@ -84,9 +85,13 @@ def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame) -> (int, str, st
     best_k, best_metric, best_strategy = 1, None, None
     best_score: float = 0.0
 
-    for k in [1, 7, 37, 97]:
-        for measure in ["manhattan", "euclidean"]:
-            for strategy in ["mean", "dominant", "random"]:
+    for k in [7]:
+        for measure in ["euclidean"]:
+            for strategy in ["random"]:
+
+    # for k in [1, 7, 37, 97]:
+    #     for measure in ["manhattan", "euclidean"]:
+    #         for strategy in ["mean", "dominant", "random"]:
                 current_score = get_score(user_id, dataframe, dataframe.dropna(subset=[user_id]), k, measure, strategy)
                 if current_score > best_score:
                     best_score = current_score
@@ -94,6 +99,24 @@ def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame) -> (int, str, st
     print(f"User {user_id} finished: k={k} -- measure={measure} -- strategy={strategy} -- score={best_score}")
     return best_k, best_metric, best_strategy
 
+def evaluate_predictions(list1, list2):
+    if len(list1) != len(list2):
+        raise ValueError("Both lists must have the same length.")
+
+    arr1 = np.array(list1)
+    arr2 = np.array(list2)
+
+    accuracy = np.mean(arr1 == arr2) * 100
+    accuracy_plus_minus = np.mean(np.abs(arr1 - arr2) <= 1) * 100
+    average_abs_error = np.mean(np.abs(arr1 - arr2))
+    matrix_error = confusion_matrix(arr1, arr2, labels=[0, 1, 2, 3, 4, 5])
+
+    return {
+        "accuracy": accuracy,
+        "accuracy_plus_minus": accuracy_plus_minus,
+        "average_abs_error": average_abs_error,
+        "matrix_error": matrix_error
+    }
 
 if __name__ == '__main__':
     train = pd.read_csv("train.csv", sep=';', header=None)
@@ -102,6 +125,17 @@ if __name__ == '__main__':
     train = train.pivot(index='movie_id', columns='user_id', values='grade')
     train.index = train.index.astype(str)
     train.columns = train.columns.astype(str)
+
+    non_nan_data = train.stack()
+    sampled_data = non_nan_data.sample(frac=0.2, random_state=42)
+    test = sampled_data.unstack(fill_value=np.nan)
+    train.update(test)
+
+    non_nan_data = train.stack()
+    sampled_data = non_nan_data.sample(frac=0.2, random_state=42)
+    validation = train.copy()
+    validation[:] = np.nan
+    validation.update(sampled_data.unstack())
 
     futures = {}
     ids = []
@@ -113,5 +147,26 @@ if __name__ == '__main__':
         for future in concurrent.futures.as_completed(futures.values()):
             user_id = next(key for key, value in futures.items() if value == future)
             hyperparams_per_user[user_id] = future.result()
+
+
+    print(f"+++++++++++++++++++VALIDAION RESULTS+++++++++++++++++++")
+    predicted = []
+    expected = []
+    for (row, col), value in validation.stack().items():
+        k, measure, strat = hyperparams_per_user[col]
+        pred = grade(user_id, row, train, k, measure, strat)
+        predicted.append(pred)
+        expected.append(value)
+    print(evaluate_predictions(expected, predicted))
+
+    print(f"+++++++++++++++++++TEST RESULTS+++++++++++++++++++")
+    predicted = []
+    expected = []
+    for (row, col), value in test.stack().items():
+        k, measure, strat = hyperparams_per_user[col]
+        pred = grade(user_id, row, train, k, measure, strat)
+        predicted.append(pred)
+        expected.append(value)
+    print(evaluate_predictions(expected, predicted))
 
     fill_task_csv(train, hyperparams_per_user)
