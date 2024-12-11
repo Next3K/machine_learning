@@ -16,19 +16,30 @@ BATCH_SIZE = 512
 class CrossFilter:
     def __init__(self, train_data: pd.DataFrame, num_features: int, learning_rate: float, lambda_reg: float):
         self.train_data: pd.DataFrame = train_data
-        self.F: pd.Dataframe = pd.DataFrame(np.random.normal(0, scale=0.1, size=(train_data.shape[0], num_features)),
-                                            columns=[f'f{i}' for i in range(num_features)])
-        self.P: pd.Dataframe = pd.DataFrame(
-            np.random.normal(0, scale=0.1, size=(num_features + 1, train_data.shape[1])),
-            columns=[f'f{i}' for i in range(train_data.shape[1])])
-        self.train(lambda_reg, learning_rate, num_features)
+        self.F: pd.Dataframe = pd.DataFrame(np.random.normal(0, scale=0.1, size=(train_data.shape[0], num_features)))
+        self.P: pd.Dataframe = pd.DataFrame(np.random.normal(0, scale=0.1, size=(num_features, train_data.shape[1])))
+        self.train(lambda_reg, learning_rate)
 
     def predict(self, data: pd.DataFrame) -> pd.DataFrame:
-        pass
+        mask = self.train_data.isna()
+        data[mask] = self.train_data[mask]
+        return data
 
-    def train(self, lambda_reg, learning_rate, num_features):
+    def train(self, lambda_reg, learning_rate):
+        mask = ~self.train_data.isna()
         for epoch in range(MAX_EPOCHS):
-            pass
+            predicted = self.F.dot(self.P)
+            error = pd.DataFrame(np.zeros((self.train_data.shape[0], self.train_data.shape[1])))
+            error[mask] = self.train_data[mask] - predicted[mask]
+            mse = (error ** 2)[mask].mean()
+            F_grad = -2 * error.values @ self.P.T + lambda_reg * np.abs(self.F.values)
+            P_grad = -2 * self.F.T @ error.values + lambda_reg * np.abs(self.P.values)
+            self.F -= learning_rate * F_grad
+            self.P -= learning_rate * P_grad
+            print(f'Epoch {epoch + 1}/{MAX_EPOCHS}, MSE: {mse.sum().sum():.4f}')
+        final_mask = self.train_data.isna()
+        self.train_data[final_mask] = (self.F.dot(self.P))[final_mask]
+        self.train_data.astype(int).clip(0, 5)
 
 
 def grid_search_hyperparams(dataset: pd.DataFrame, hyperparameter_grid) -> (int, float, float):
