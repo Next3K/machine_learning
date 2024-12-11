@@ -9,42 +9,60 @@ from pandas.core.interchange.dataframe_protocol import DataFrame
 
 from fun import evaluate_predictions
 
-MAX_EPOCHS = 50
-BATCH_SIZE = 512
+MAX_EPOCHS = 100
 
 
 class CrossFilter:
     def __init__(self, train_data: pd.DataFrame, num_features: int, learning_rate: float, lambda_reg: float):
         self.train_data: pd.DataFrame = train_data
-        self.F: pd.Dataframe = pd.DataFrame(np.random.normal(0, scale=0.1, size=(train_data.shape[0], num_features)))
-        self.P: pd.Dataframe = pd.DataFrame(np.random.normal(0, scale=0.1, size=(num_features, train_data.shape[1])))
-        self.train(lambda_reg, learning_rate)
+        self.Q: pd.Dataframe = pd.DataFrame(np.random.normal(0, size=(train_data.shape[1], num_features)))
+        self.P: pd.Dataframe = pd.DataFrame(np.random.normal(0, size=(train_data.shape[0], num_features)))
+        self.train(alpha=learning_rate, beta=lambda_reg)
 
     def predict(self, data: pd.DataFrame) -> pd.DataFrame:
-        mask = self.train_data.isna()
+        mask = data.isna()
         data[mask] = self.train_data[mask]
-        return data
+        return data.astype(int)
 
-    def train(self, lambda_reg, learning_rate):
-        mask = ~self.train_data.isna()
-        for epoch in range(MAX_EPOCHS):
-            predicted = self.F.dot(self.P)
-            error = pd.DataFrame(np.zeros((self.train_data.shape[0], self.train_data.shape[1])))
-            error[mask] = self.train_data[mask] - predicted[mask]
-            mse = (error ** 2)[mask].mean()
-            F_grad = -2 * error.values @ self.P.T + lambda_reg * np.abs(self.F.values)
-            P_grad = -2 * self.F.T @ error.values + lambda_reg * np.abs(self.P.values)
-            self.F -= learning_rate * F_grad
-            self.P -= learning_rate * P_grad
-            print(f'Epoch {epoch + 1}/{MAX_EPOCHS}, MSE: {mse.sum().sum():.4f}')
-        final_mask = self.train_data.isna()
-        self.train_data[final_mask] = (self.F.dot(self.P))[final_mask]
-        self.train_data.astype(int).clip(0, 5)
+    def train(self, alpha=0.0002, beta=0.02):
+        assert self.Q.shape[1] == self.P.shape[1]
+        R = self.train_data.fillna(-1).to_numpy()
+        P = self.P.to_numpy()
+        Q = self.Q.to_numpy()
+        K = self.Q.shape[1]
+        Q = Q.T
+
+        for step in range(MAX_EPOCHS):
+            for i in range(len(R)):
+                for j in range(len(R[i])):
+                    if R[i][j] > -1:
+                        # error
+                        eij = R[i][j] - np.dot(P[i, :], Q[:, j])
+                        for k in range(K):
+                            P[i][k] = P[i][k] + alpha * (2 * eij * Q[k][j] - beta * P[i][k])
+                            Q[k][j] = Q[k][j] + alpha * (2 * eij * P[i][k] - beta * Q[k][j])
+
+            e = 0
+            for i in range(len(R)):
+                for j in range(len(R[i])):
+                    if R[i][j] > -1:
+                        e = e + pow(R[i][j] - np.dot(P[i, :], Q[:, j]), 2)
+                        for k in range(K):
+                            e = e + (beta / 2) * (pow(P[i][k], 2) + pow(Q[k][j], 2))
+            if e < 0.001:
+                break
+        nP, nQ = P, Q.T
+        nR = np.dot(nP, nQ.T)
+        rounded = np.round(nR)
+        clipped = np.clip(rounded, 0, 5)
+        df = pd.DataFrame(clipped, index=self.train_data.index, columns=self.train_data.columns)
+        mask = self.train_data.isna()
+        self.train_data[mask] = df[mask]
 
 
 def grid_search_hyperparams(dataset: pd.DataFrame, hyperparameter_grid) -> (int, float, float):
     train_set, validation_set = split_set(dataset, seed=42, split=0.2)
-    best_params, best_acc = None, float('inf')
+    best_params, best_acc = None, 0
     i = 0
     I = len(hyperparameter_grid)
 
@@ -54,37 +72,44 @@ def grid_search_hyperparams(dataset: pd.DataFrame, hyperparameter_grid) -> (int,
     for params in hyperparameter_grid:
         num_features, learning_rate, lambda_reg = params
         model = CrossFilter(train_set, num_features, learning_rate, lambda_reg)
-        predicted: pd.DataFrame = model.predict(validation_set)
         mask = ~validation_set.isna()
+        empty_spots = validation_set.copy()
+        empty_spots[:] = pd.NA
+        predicted: pd.DataFrame = model.predict(empty_spots)
         matches = (validation_set[mask] == predicted[mask])
-        acc = matches.mean()
+        acc = matches.sum().sum() / mask.sum().sum()
 
         if acc > best_acc:
-            all_expected = validation_set[mask].values
-            all_predicted = predicted[mask].values
+            for _, row in validation_set[mask].iterrows():
+                for value in row.dropna():
+                    all_expected.append(value)
+            for _, row in predicted[mask].iterrows():
+                for value in row.dropna():
+                    all_predicted.append(value)
             best_params = params
             best_acc = acc
         i += 1
-        print(f"Done testing {i}/{I} -- num_features={num_features}, learning_rate={learning_rate}, reg={lambda_reg}")
-    evaluate_predictions(all_expected, all_predicted)
+        print(
+            f"Done testing {i}/{I} -- acc={best_acc} -- num_features={num_features}, learning_rate={learning_rate}, reg={lambda_reg}")
+    print(evaluate_predictions(all_expected, all_predicted))
 
     return best_params
 
 
 def fill_task_csv(model: CrossFilter):
     task = pd.read_csv("task.csv", sep=';', header=None)
-    task.columns = ['id', 'user_id', 'movie_id', "grade"]
     task_copy = task.copy()
-    task_copy.drop(['id'], inplace=True)
-    task_matrix: DataFrame = task_copy.pivot(index='movie_id', columns='user_id', values='grade')
+    task_copy.columns = ['id', 'user_id', 'movie_id', "grade"]
+    task.columns = ['id', 'user_id', 'movie_id', "grade"]
+    task_matrix: DataFrame = task.pivot(index='user_id', columns='movie_id', values='grade')
     predicted: pd.DataFrame = model.predict(task_matrix)
     for i in range(len(task)):
-        user_id = str(int(task.iloc[i]['user_id']))
+        user_id = int(task.iloc[i]['user_id'])
         movie_id = int(task.iloc[i]['movie_id'])
-        grade = int(predicted.loc[user_id][movie_id])
-        task.at[i, 'grade'] = grade
-    task = task.astype(int)
-    task.to_csv("submission.csv", index=False, header=False, sep=";")
+        grade = int(predicted.at[user_id, movie_id])
+        task_copy.at[i, 'grade'] = grade
+    task_copy = task_copy.astype(int)
+    task_copy.to_csv("submission.csv", index=False, header=False, sep=";")
 
 
 def split_set(src: pd.DataFrame, seed: int, split: float) -> (pd.DataFrame, pd.DataFrame):
@@ -109,19 +134,19 @@ if __name__ == '__main__':
     train = pd.read_csv("train.csv", sep=';', header=None)
     train.columns = ['id', 'user_id', 'movie_id', "grade"]
     train = train.drop('id', axis=1)
-    train = train.pivot(index='movie_id', columns='user_id', values='grade')
+    train = train.pivot(index='user_id', columns='movie_id', values='grade')
 
     # Define hyperparameters
-    num_features = [8, 11, 19, 21]
-    learning_rate = [0.01, 0.02, 0.03, 0.05]
-    lambda_reg = [0.01, 0.02, 0.05, 0.1]
+    num_features = [3, 8, 19]
+    learning_rate = [0.0001, 0.0003, 0.001]
+    lambda_reg = [0.01, 0.05, 0.1]
     possible_hyperparameters: list[tuple[int, float, float]] = (
         list(itertools.product(num_features, learning_rate, lambda_reg)))
 
     # Create and train model with best hyperparameters
     num_features, learning_rate, lambda_reg = grid_search_hyperparams(train, possible_hyperparameters)
 
-    model = CrossFilter(train, lambda_reg, learning_rate, num_features)
+    model = CrossFilter(train, num_features, learning_rate, lambda_reg)
 
     fill_task_csv(model)
 
