@@ -9,7 +9,6 @@ from graphviz import Digraph
 import random
 from collections import Counter
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 from Model import Model
 from typing import List
@@ -89,8 +88,8 @@ def parallel_forrest(user_id, dataframe) -> (int, Forrest):
 
     for number_of_trees in [5]:
         for bootstrap_percent in [30]:
-    # for number_of_trees in [3, 5, 7, 11]:
-    #     for bootstrap_percent in [20, 30, 50, 60]:
+            # for number_of_trees in [3, 5, 7, 11]:
+            #     for bootstrap_percent in [20, 30, 50, 60]:
             print(f"User {user_id}: {number_of_trees} - {bootstrap_percent}")
             n = len(dataframe) // 5
             dfs: List[pd.DataFrame] = [
@@ -124,16 +123,15 @@ def parallel_forrest(user_id, dataframe) -> (int, Forrest):
 def parallel_trees(user_id, dataframe) -> (int, Tree):
     best_tree, best_score = None, 0.0
 
+    # for max_tree_depth in [3]:
+    #     for min_samples_split in [7]:
+    #         for min_samples_leaf in [3]:
+    #             for criterion in ["entropy"]:
 
-    for max_tree_depth in [3]:
-        for min_samples_split in [7]:
-            for min_samples_leaf in [3]:
-                for criterion in ["entropy"]:
-
-    # for max_tree_depth in [3, 5, 7, 10]:
-    #     for min_samples_split in [2, 3, 5, 7, 11, 13]:
-    #         for min_samples_leaf in [1, 2, 3, 5, 7, 11, 13]:
-    #             for criterion in ["gini", "entropy"]:
+    for max_tree_depth in [3, 5, 7, 10]:
+        for min_samples_split in [2, 3, 5, 7, 11, 13]:
+            for min_samples_leaf in [1, 2, 3, 5, 7, 11, 13]:
+                for criterion in ["gini", "entropy"]:
                     n = len(dataframe) // 5
                     dfs = [
                         dataframe[:n],
@@ -154,6 +152,20 @@ def parallel_trees(user_id, dataframe) -> (int, Tree):
                                                                     min_samples_leaf, criterion, dataframe)
 
     return user_id, best_tree
+
+
+def train_test_split(data, test_size=0.2, random_state=None):
+    if not 0 < test_size < 1:
+        raise ValueError("test_size must be between 0 and 1")
+    if random_state is not None:
+        np.random.seed(random_state)
+    shuffled_indices = np.random.permutation(len(data))
+    test_set_size = int(len(data) * test_size)
+    test_indices = shuffled_indices[:test_set_size]
+    train_indices = shuffled_indices[test_set_size:]
+    train_data = data.iloc[train_indices]
+    test_data = data.iloc[test_indices]
+    return train_data, test_data
 
 
 if __name__ == '__main__':
@@ -251,7 +263,6 @@ if __name__ == '__main__':
         expected.append(exp)
         predicted.append(pred)
     print(evaluate_predictions(expected, predicted))
-
 
     # generate PNGs
     for i in range(50):

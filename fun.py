@@ -7,7 +7,6 @@ import requests
 import pandas as pd
 import os
 
-from sklearn.metrics import confusion_matrix
 
 API_KEY = "api-key"
 
@@ -81,6 +80,17 @@ def extract_from_json(directory: str):
 
     df = pd.DataFrame(data)
     df.to_csv("extracted_movies.csv", index=False)
+
+def confusion_matrix(expected, predicted, labels):
+    expected = np.array(expected)
+    predicted = np.array(predicted)
+    num_labels = len(labels)
+    matrix = np.zeros((num_labels, num_labels), dtype=int)
+    label_to_index = {label: index for index, label in enumerate(labels)}
+    for e, p in zip(expected, predicted):
+        if e in label_to_index and p in label_to_index:
+            matrix[label_to_index[e], label_to_index[p]] += 1
+    return matrix
 
 def evaluate_predictions(list1, list2):
     if len(list1) != len(list2):
