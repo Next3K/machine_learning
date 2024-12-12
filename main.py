@@ -13,8 +13,6 @@ import json
 import pandas as pd
 from pandas import Series
 from pandas.core.interchange.dataframe_protocol import DataFrame
-from sklearn.model_selection import train_test_split
-from sympy.logic.inference import valid
 from fun import evaluate_predictions
 
 from Knn import Knn
@@ -108,6 +106,20 @@ def fill_task_csv(model: {int, Knn}):
     task.to_csv("submission.csv", index=False, header=False, sep=";")
 
 
+def train_test_split(data, test_size=0.2, random_state=None):
+    if not 0 < test_size < 1:
+        raise ValueError("test_size must be between 0 and 1")
+    if random_state is not None:
+        np.random.seed(random_state)
+    shuffled_indices = np.random.permutation(len(data))
+    test_set_size = int(len(data) * test_size)
+    test_indices = shuffled_indices[:test_set_size]
+    train_indices = shuffled_indices[test_set_size:]
+    train_data = data.iloc[train_indices]
+    test_data = data.iloc[test_indices]
+    return train_data, test_data
+
+
 if __name__ == '__main__':
     # scrap_to_json()
     # extract_from_json("movies")
@@ -124,7 +136,6 @@ if __name__ == '__main__':
 
     for user_id, dataframe in user_dataframe_map.items():
         dataframe.drop(columns=['id', 'user_id', 'movie_id'], inplace=True)
-
 
     # find the best possible knn for every user
     KNNs: {int, Knn} = {}
@@ -191,7 +202,7 @@ if __name__ == '__main__':
     predicted = []
     expected = []
     full_train_data.drop(columns=['id', 'movie_id'], inplace=True)
-    _ , test_portion = train_test_split(full_train_data, test_size=0.2, random_state=42)
+    _, test_portion = train_test_split(full_train_data, test_size=0.2, random_state=42)
     for z in range(len(test_portion)):
         row = test_portion.iloc[z, 2:]
         user_id = test_portion.iloc[z]['user_id']
