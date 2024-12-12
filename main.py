@@ -4,7 +4,6 @@ import os
 import random
 import pandas as pd
 import numpy as np
-from sklearn.metrics import confusion_matrix
 
 
 def fill_task_csv(df: pd.DataFrame, hyperparams_per_user: {str: (int, str, str)}):
@@ -85,19 +84,28 @@ def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame) -> (int, str, st
     best_k, best_metric, best_strategy = 1, None, None
     best_score: float = 0.0
 
-    for k in [7]:
-        for measure in ["euclidean"]:
-            for strategy in ["random"]:
-
-    # for k in [1, 7, 37, 97]:
-    #     for measure in ["manhattan", "euclidean"]:
-    #         for strategy in ["mean", "dominant", "random"]:
+    for k in [1, 7, 37, 97]:
+        for measure in ["manhattan", "euclidean"]:
+            for strategy in ["mean", "dominant", "random"]:
                 current_score = get_score(user_id, dataframe, dataframe.dropna(subset=[user_id]), k, measure, strategy)
                 if current_score > best_score:
                     best_score = current_score
                     best_k, best_metric, best_strategy = k, measure, strategy
     print(f"User {user_id} finished: k={k} -- measure={measure} -- strategy={strategy} -- score={best_score}")
     return best_k, best_metric, best_strategy
+
+
+def confusion_matrix(expected, predicted, labels):
+    expected = np.array(expected)
+    predicted = np.array(predicted)
+    num_labels = len(labels)
+    matrix = np.zeros((num_labels, num_labels), dtype=int)
+    label_to_index = {label: index for index, label in enumerate(labels)}
+    for e, p in zip(expected, predicted):
+        if e in label_to_index and p in label_to_index:
+            matrix[label_to_index[e], label_to_index[p]] += 1
+    return matrix
+
 
 def evaluate_predictions(list1, list2):
     if len(list1) != len(list2):
@@ -117,6 +125,7 @@ def evaluate_predictions(list1, list2):
         "average_abs_error": average_abs_error,
         "matrix_error": matrix_error
     }
+
 
 if __name__ == '__main__':
     train = pd.read_csv("train.csv", sep=';', header=None)
@@ -147,7 +156,6 @@ if __name__ == '__main__':
         for future in concurrent.futures.as_completed(futures.values()):
             user_id = next(key for key, value in futures.items() if value == future)
             hyperparams_per_user[user_id] = future.result()
-
 
     print(f"+++++++++++++++++++VALIDAION RESULTS+++++++++++++++++++")
     predicted = []
