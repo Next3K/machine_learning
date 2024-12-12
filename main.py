@@ -9,7 +9,7 @@ from pandas.core.interchange.dataframe_protocol import DataFrame
 
 from fun import evaluate_predictions
 
-MAX_EPOCHS = 100
+MAX_EPOCHS = 200
 
 
 class CrossFilter:
@@ -17,14 +17,14 @@ class CrossFilter:
         self.train_data: pd.DataFrame = train_data
         self.Q: pd.Dataframe = pd.DataFrame(np.random.normal(0, size=(train_data.shape[1], num_features)))
         self.P: pd.Dataframe = pd.DataFrame(np.random.normal(0, size=(train_data.shape[0], num_features)))
-        self.train(alpha=learning_rate, beta=lambda_reg)
+        self.train(learning_rate=learning_rate, lambda_reg=lambda_reg)
 
     def predict(self, data: pd.DataFrame) -> pd.DataFrame:
         mask = data.isna()
         data[mask] = self.train_data[mask]
         return data.astype(int)
 
-    def train(self, alpha=0.0002, beta=0.02):
+    def train(self, learning_rate, lambda_reg):
         assert self.Q.shape[1] == self.P.shape[1]
         R = self.train_data.fillna(-1).to_numpy()
         P = self.P.to_numpy()
@@ -32,25 +32,15 @@ class CrossFilter:
         K = self.Q.shape[1]
         Q = Q.T
 
-        for step in range(MAX_EPOCHS):
+        for _ in range(MAX_EPOCHS):
             for i in range(len(R)):
                 for j in range(len(R[i])):
                     if R[i][j] > -1:
-                        # error
                         eij = R[i][j] - np.dot(P[i, :], Q[:, j])
                         for k in range(K):
-                            P[i][k] = P[i][k] + alpha * (2 * eij * Q[k][j] - beta * P[i][k])
-                            Q[k][j] = Q[k][j] + alpha * (2 * eij * P[i][k] - beta * Q[k][j])
+                            P[i][k] = P[i][k] + learning_rate * (2 * eij * Q[k][j] - lambda_reg * P[i][k])
+                            Q[k][j] = Q[k][j] + learning_rate * (2 * eij * P[i][k] - lambda_reg * Q[k][j])
 
-            e = 0
-            for i in range(len(R)):
-                for j in range(len(R[i])):
-                    if R[i][j] > -1:
-                        e = e + pow(R[i][j] - np.dot(P[i, :], Q[:, j]), 2)
-                        for k in range(K):
-                            e = e + (beta / 2) * (pow(P[i][k], 2) + pow(Q[k][j], 2))
-            if e < 0.001:
-                break
         nP, nQ = P, Q.T
         nR = np.dot(nP, nQ.T)
         rounded = np.round(nR)

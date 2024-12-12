@@ -1,5 +1,16 @@
 import numpy as np
-from sklearn.metrics import confusion_matrix
+
+
+def confusion_matrix(expected, predicted, labels):
+    expected = np.array(expected)
+    predicted = np.array(predicted)
+    num_labels = len(labels)
+    matrix = np.zeros((num_labels, num_labels), dtype=int)
+    label_to_index = {label: index for index, label in enumerate(labels)}
+    for e, p in zip(expected, predicted):
+        if e in label_to_index and p in label_to_index:
+            matrix[label_to_index[e], label_to_index[p]] += 1
+    return matrix
 
 
 def evaluate_predictions(expected, predicted):
