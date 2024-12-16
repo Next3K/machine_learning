@@ -21,25 +21,25 @@ def fill_task_csv(df: pd.DataFrame, hyperparams_per_user: {str: (int, str, str)}
 
 def choice(grades: [int], strategy: str) -> int:
     if strategy == 'mean':
-        return np.mean(grades)
+        return int(np.mean(grades))
     elif strategy == 'dominant':
         values, counts = np.unique(grades, return_counts=True)
-        return values[np.argmax(counts)]
+        return int(values[np.argmax(counts)])
     elif strategy == 'random':
-        return random.choice(grades)
+        return int(random.choice(grades))
     else:
         raise ValueError(f"Bad input: f{strategy} is not a valid strategy.")
 
 
 def euclidean(row1, row2):
     assert len(row1) == len(row2)
-    dimensions = len(row1)
+    # dimensions = len(row1)
     valid_indices = ~np.isnan(row1) & ~np.isnan(row2)
     valid_row1 = row1[valid_indices]
     valid_row2 = row2[valid_indices]
     distance = np.sqrt(np.sum((valid_row1 - valid_row2) ** 2))
-    normalization = np.sqrt(dimensions / len(valid_row1))
-    return distance * normalization
+    # normalization = np.sqrt(dimensions / len(valid_row1))
+    return distance
 
 
 def manhattan(row1, row2):
@@ -53,6 +53,15 @@ def manhattan(row1, row2):
     return distance * normalization
 
 
+def id(row1, row2):
+    assert len(row1) == len(row2)
+    mask = ~row1.isna() & ~row2.isna()
+    matching = sum(row1[mask] == row2[mask])
+    total = sum(mask)
+    identity = matching / total if total > 0 else 0
+    return (1.0 - identity) * 100
+
+
 def grade(user_id: str, movie_id: str, df: pd.DataFrame, k: int, measure: str, strategy: str) -> int:
     df.columns = df.columns.astype(str)
     df.index = df.index.astype(str)
@@ -62,47 +71,56 @@ def grade(user_id: str, movie_id: str, df: pd.DataFrame, k: int, measure: str, s
     distances = []
     for idx, row in df.iterrows():
         if idx != user_id:
-            distances.append((euclidean(my_row, row) if measure == 'euclidean' else manhattan(my_row, row), idx))
+            if measure == 'id':
+                distances.append((id(my_row, row), idx))
+            elif measure == 'manhattan':
+                distances.append((manhattan(my_row, row), idx))
+            elif measure == 'euclidean':
+                distances.append((euclidean(my_row, row), idx))
+            else:
+                raise ValueError(f"Bad input: f{measure} is not a valid measure.")
     closest_rows = heapq.nsmallest(k, distances, key=lambda x: x[0])
     closest_indices = [idx for _, idx in closest_rows]
     grades = df.loc[closest_indices][movie_id].tolist()
     return choice(grades, strategy)
 
 
-def get_score(user_id: str, train_data: pd.DataFrame, test_data: pd.DataFrame, k: int, measure: str,
-              strategy: str) -> int:
-    # ignore nan fields for this user
-    test_data = test_data.dropna(subset=[user_id])
-    total_elems, correct = len(test_data), 0
-    for i in range(total_elems):
-        should_be: int = test_data.iloc[i][user_id]
-        movie_id: str = test_data.index[i]
-        if grade(user_id, movie_id, train_data, k, measure, strategy) == should_be:
-            correct += 1
-    return correct / total_elems
+# def get_score(user_id: str, train_data: pd.DataFrame, test_data: pd.DataFrame, k: int, measure: str,
+#               strategy: str) -> int:
+#     test_data = test_data.dropna(subset=[user_id])
+#     total_elems, correct = len(test_data), 0
+#     for i in range(total_elems):
+#         should_be: int = test_data.iloc[i][user_id]
+#         movie_id: str = test_data.index[i]
+#         if grade(user_id, movie_id, train_data, k, measure, strategy) == should_be:
+#             correct += 1
+#     return correct / total_elems
 
 
-def validate(train_data: pd.DataFrame, validation: pd.DataFrame, hyperparams_per_user):
+def validate(train_data: pd.DataFrame, validation: pd.DataFrame, hyperparams_per_user, sout: bool = False) -> float:
     predicted = []
     expected = []
     for (row, col), value in validation.stack().items():
-        if pd.notna(value):
+        i_val = int(value)
+        if pd.notna(value) and col in hyperparams_per_user:
             k, measure, strat = hyperparams_per_user[col]
-            print("grading...")
             pred = grade(user_id, row, train_data, k, measure, strat)
             predicted.append(pred)
-            expected.append(value)
-    print(evaluate_predictions(expected, predicted))
+            expected.append(i_val)
+    accuracy = sum(p == e for p, e in zip(predicted, expected)) / len(expected)
+    if sout:
+        print(evaluate_predictions(expected, predicted))
+    return accuracy
 
 
 def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame, validation: pd.DataFrame) -> (int, str, str):
     best_k, best_metric, best_strategy = 1, None, None
     best_score: float = 0.0
 
-    for k in [1, 7, 21]:
-        for measure in ["manhattan", "euclidean"]:
-            for strategy in ["mean", "dominant", "random"]:
-                current_score = get_score(user_id, dataframe, validation, k, measure, strategy)
+    for k in [1, 7, 13, 37, 97]:
+        for measure in ["id", "manhattan", "euclidean"]:
+            for strategy in ["mean", "dominant"]:
+                current_score = validate(dataframe, validation, {user_id: (k, measure, strategy)})
                 if current_score > best_score:
                     best_score = current_score
                     best_k, best_metric, best_strategy = k, measure, strategy
@@ -181,6 +199,6 @@ if __name__ == '__main__':
             hyperparams_per_user[user_id] = future.result()
 
     print(f"+++++++++++++++++++VALIDAION RESULTS+++++++++++++++++++")
-    validate(train, validation, hyperparams_per_user)
+    validate(train, validation, hyperparams_per_user, sout=True)
 
     fill_task_csv(train, hyperparams_per_user)
