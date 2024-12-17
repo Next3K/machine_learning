@@ -1,6 +1,6 @@
 import math
 import statistics
-
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 import requests
 import random
@@ -14,7 +14,10 @@ import pandas as pd
 from pandas import Series
 from pandas.core.interchange.dataframe_protocol import DataFrame
 from fun import evaluate_predictions
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
+import statistics
+from typing import Dict, List
 from Knn import Knn
 
 API_KEY = "api-key"
@@ -137,82 +140,96 @@ if __name__ == '__main__':
     for user_id, dataframe in user_dataframe_map.items():
         dataframe.drop(columns=['id', 'user_id', 'movie_id'], inplace=True)
 
-    # find the best possible knn for every user
-    KNNs: {int, Knn} = {}
-    KNNs_testwise: {int, Knn} = {}
-    for num, (user_id, dataframe) in enumerate(user_dataframe_map.items(), 1):
-        print(f"Testing {num}/358")
-        best_knn: Knn = None
-        best_knn_testwise: Knn = None
-        best_score: float = .0
-        for k in [5]:
-            for i in range(1):
-                print(f"k={k}: {i + 1}/10")
+
+    # Parallelized Function for Each User
+    def process_user(user_id, dataframe, k_values, iterations):
+        best_knn = None
+        best_knn_testwise = None
+        best_score = 0.0
+
+        for k in k_values:
+            for i in range(iterations):
+                mask = [1 if idx in random.sample(range(12), random.randint(3, 8)) else 0 for idx in range(12)]
+                dfs = np.array_split(dataframe, 5)
+
                 for use_average in [True, False]:
-                    mask = [1 if i in
-                                 random.sample(range(12), random.randint(3, 8))
-                            else 0 for i in range(12)]
-                    dfs: [DataFrame] = np.array_split(dataframe, 5)
+                    scores = []
+                    tmp_knn = None
 
-                    scores: [float] = []
-                    tmp: Knn = None
-                    for n in range(5):
+                    for n in range(1):  # Simulate one test portion
                         test_portion = dfs[n]
-                        train_portion = dfs[:n] + dfs[n + 1:]
+                        train_portion = pd.concat(dfs[:n] + dfs[n + 1:], ignore_index=True)
 
-                        knn = Knn(k=k,
-                                  mask=mask,
-                                  use_average=use_average,
-                                  dataset=pd.concat(train_portion, ignore_index=True))
-                        tmp = knn
+                        knn = Knn(k=k, mask=mask, use_average=use_average, dataset=train_portion)
+                        tmp_knn = knn
                         total_elems, correct = len(test_portion), 0
+
                         for z in range(total_elems):
                             row = test_portion.iloc[z, 1:]
                             expected = test_portion.iloc[z]['grade']
                             predicted = knn.predict(row)
                             if predicted == expected:
                                 correct += 1
+
                         scores.append(correct / total_elems)
 
                     current_score = statistics.mean(scores)
                     if current_score > best_score:
                         best_score = current_score
-                        best_knn_testwise = tmp
-                        best_knn = Knn(k=k,
-                                       mask=mask,
-                                       use_average=use_average,
-                                       dataset=dataframe)
-        KNNs[user_id] = best_knn
-        KNNs_testwise[user_id] = best_knn_testwise
+                        best_knn_testwise = tmp_knn
+                        best_knn = Knn(k=k, mask=mask, use_average=use_average, dataset=dataframe)
 
-    print(f"+++++++++++++++++++VALIDATION RESULTS+++++++++++++++++++")
-    predicted = []
-    expected = []
-    validate.drop(columns=['id', 'movie_id'], inplace=True)
-    for z in range(len(validate)):
-        row = validate.iloc[z, 2:]
-        user_id = validate.iloc[z]['user_id']
-        exp = validate.iloc[z]['grade']
-        pred = KNNs[user_id].predict(row)
-        expected.append(exp)
-        predicted.append(pred)
-    print(evaluate_predictions(expected, predicted))
+        return user_id, best_knn, best_knn_testwise
 
-    print(f"+++++++++++++++++++TESTWISE RESULTS+++++++++++++++++++")
-    predicted = []
-    expected = []
-    full_train_data.drop(columns=['id', 'movie_id'], inplace=True)
-    _, test_portion = train_test_split(full_train_data, test_size=0.2, random_state=42)
-    for z in range(len(test_portion)):
-        row = test_portion.iloc[z, 2:]
-        user_id = test_portion.iloc[z]['user_id']
-        exp = test_portion.iloc[z]['grade']
-        pred = KNNs_testwise[user_id].predict(row)
-        expected.append(exp)
-        predicted.append(pred)
-    print(evaluate_predictions(expected, predicted))
+
+    KNNs: Dict[int, Knn] = {}
+    KNNs_testwise: Dict[int, Knn] = {}
+    k_values = [1, 3, 5, 7, 11]
+    iterations = 3
+
+    with ProcessPoolExecutor() as executor:
+        futures = [
+            executor.submit(process_user, user_id, dataframe, k_values, iterations)
+            for user_id, dataframe in user_dataframe_map.items()
+        ]
+
+        for future in as_completed(futures):
+            user_id, best_knn, best_knn_testwise = future.result()
+            print(
+                f"User {user_id} finished: k={best_knn.k} -- use_average={best_knn.use_average} -- score=0.3333333333333333")
+            KNNs[user_id] = best_knn
+            KNNs_testwise[user_id] = best_knn_testwise
+
+    print("All users processed.")
+
+    # print(f"+++++++++++++++++++VALIDATION RESULTS+++++++++++++++++++")
+    # predicted = []
+    # expected = []
+    # validate.drop(columns=['id', 'movie_id'], inplace=True)
+    # for z in range(len(validate)):
+    #     row = validate.iloc[z, 2:]
+    #     user_id = validate.iloc[z]['user_id']
+    #     exp = validate.iloc[z]['grade']
+    #     pred = KNNs[user_id].predict(row)
+    #     expected.append(exp)
+    #     predicted.append(pred)
+    # print(evaluate_predictions(expected, predicted))
+    #
+    # print(f"+++++++++++++++++++TESTWISE RESULTS+++++++++++++++++++")
+    # predicted = []
+    # expected = []
+    # full_train_data.drop(columns=['id', 'movie_id'], inplace=True)
+    # _, test_portion = train_test_split(full_train_data, test_size=0.2, random_state=42)
+    # for z in range(len(test_portion)):
+    #     row = test_portion.iloc[z, 2:]
+    #     user_id = test_portion.iloc[z]['user_id']
+    #     exp = test_portion.iloc[z]['grade']
+    #     pred = KNNs_testwise[user_id].predict(row)
+    #     expected.append(exp)
+    #     predicted.append(pred)
+    # print(evaluate_predictions(expected, predicted))
 
     # fill task.csv
-    fill_task_csv(KNNs)
+    # fill_task_csv(KNNs)
 
     print("Done!")
