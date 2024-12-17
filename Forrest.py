@@ -9,6 +9,7 @@ import random
 class Forrest(Model):
     def __init__(self, num_of_trees: int, data: pd.DataFrame, bootstrap_percent: float):
         assert 0 < (bootstrap_percent / 100) < 1
+        self.bootstrap_percent = bootstrap_percent
         self.num_of_trees = num_of_trees
         self.data = data
         self.bootstrap_number: int = int((bootstrap_percent / 100) * len(data))
