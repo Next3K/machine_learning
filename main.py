@@ -33,12 +33,12 @@ def choice(grades: [int], strategy: str) -> int:
 
 def euclidean(row1, row2):
     assert len(row1) == len(row2)
-    # dimensions = len(row1)
+    dimensions = len(row1)
     valid_indices = ~np.isnan(row1) & ~np.isnan(row2)
     valid_row1 = row1[valid_indices]
     valid_row2 = row2[valid_indices]
     distance = np.sqrt(np.sum((valid_row1 - valid_row2) ** 2))
-    # normalization = np.sqrt(dimensions / len(valid_row1))
+    normalization = np.sqrt(dimensions / len(valid_row1))
     return distance
 
 
@@ -85,19 +85,7 @@ def grade(user_id: str, movie_id: str, df: pd.DataFrame, k: int, measure: str, s
     return choice(grades, strategy)
 
 
-# def get_score(user_id: str, train_data: pd.DataFrame, test_data: pd.DataFrame, k: int, measure: str,
-#               strategy: str) -> int:
-#     test_data = test_data.dropna(subset=[user_id])
-#     total_elems, correct = len(test_data), 0
-#     for i in range(total_elems):
-#         should_be: int = test_data.iloc[i][user_id]
-#         movie_id: str = test_data.index[i]
-#         if grade(user_id, movie_id, train_data, k, measure, strategy) == should_be:
-#             correct += 1
-#     return correct / total_elems
-
-
-def validate(train_data: pd.DataFrame, validation: pd.DataFrame, hyperparams_per_user, sout: bool = False) -> float:
+def validate(train_data: pd.DataFrame, validation: pd.DataFrame, hyperparams_per_user, sout: bool = False) -> (float, [int], [int]):
     predicted = []
     expected = []
     for (row, col), value in validation.stack().items():
@@ -110,23 +98,25 @@ def validate(train_data: pd.DataFrame, validation: pd.DataFrame, hyperparams_per
     accuracy = sum(p == e for p, e in zip(predicted, expected)) / len(expected)
     if sout:
         print(evaluate_predictions(expected, predicted))
-    return accuracy
+    return accuracy, predicted, expected
 
 
-def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame, validation: pd.DataFrame) -> (int, str, str):
+def hyperparams_for_user(user_id: str, dataframe: pd.DataFrame, validation: pd.DataFrame) -> (int, str, str, [int], [int]):
     best_k, best_metric, best_strategy = 1, None, None
     best_score: float = 0.0
+    pred, exp = [], []
 
-    for k in [1, 7, 13, 37, 97]:
+    for k in [1, 7, 97]:
         for measure in ["id", "manhattan", "euclidean"]:
-            for strategy in ["mean", "dominant"]:
-                current_score = validate(dataframe, validation, {user_id: (k, measure, strategy)})
-                if current_score > best_score:
+            for strategy in ["mean", "dominant", "random"]:
+                current_score, p, e = validate(dataframe, validation, {user_id: (k, measure, strategy)})
+                if current_score >= best_score:
+                    pred, exp = p, e
                     best_score = current_score
                     best_k, best_metric, best_strategy = k, measure, strategy
     print(
         f"User {user_id} finished: k={best_k} -- measure={best_metric} -- strategy={best_strategy} -- score={best_score}")
-    return best_k, best_metric, best_strategy
+    return best_k, best_metric, best_strategy, pred, exp
 
 
 def confusion_matrix(expected, predicted, labels):
@@ -187,18 +177,25 @@ if __name__ == '__main__':
 
     train, validation = split_dataframe(train)
 
-    futures = {}
-    ids = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-        for user_id in train.columns:
-            futures[user_id] = executor.submit(hyperparams_for_user, user_id, train.copy(), validation.copy())
+    hyperparams_per_user = {}
 
-        hyperparams_per_user = {}
-        for future in concurrent.futures.as_completed(futures.values()):
-            user_id = next(key for key, value in futures.items() if value == future)
-            hyperparams_per_user[user_id] = future.result()
-
-    print(f"+++++++++++++++++++VALIDAION RESULTS+++++++++++++++++++")
-    validate(train, validation, hyperparams_per_user, sout=True)
-
-    fill_task_csv(train, hyperparams_per_user)
+    # futures = {}
+    # ids = []
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+    #     for user_id in train.columns:
+    #         futures[user_id] = executor.submit(hyperparams_for_user, user_id, train.copy(), validation.copy())
+    #
+    #     hyperparams_per_user = {}
+    #     for future in concurrent.futures.as_completed(futures.values()):
+    #         user_id = next(key for key, value in futures.items() if value == future)
+    #         hyperparams_per_user[user_id] = future.result()
+    tot_pred, tot_exp = [], []
+    for user_id in train.columns:
+        k, str1, str2, predicted, expected = hyperparams_for_user(user_id, train, validation)
+        tot_pred.extend(predicted)
+        tot_exp.extend(expected)
+        hyperparams_per_user[user_id] = (k, str1, str2)
+    print(f"+++++++++++++++++++VALIDATION RESULTS+++++++++++++++++++")
+    print(evaluate_predictions(tot_exp, tot_pred))
+    # validate(train, validation, hyperparams_per_user, sout=True)
+    # fill_task_csv(train, hyperparams_per_user)
