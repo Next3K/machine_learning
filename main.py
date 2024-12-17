@@ -109,7 +109,7 @@ def parallel_forrest(user_id, dataframe) -> (int, Forrest):
                 scores.append(get_score(test_portion, forrest))
 
             current_score = statistics.mean(scores)
-            if current_score > best_score:
+            if current_score >= best_score:
                 best_score, best_forrest = current_score, Forrest(
                     num_of_trees=number_of_trees,
                     data=dataframe,
@@ -120,9 +120,9 @@ def parallel_forrest(user_id, dataframe) -> (int, Forrest):
 
 
 def parallel_trees(user_id, dataframe) -> (int, Tree):
-    best_tree, best_score = None, 0.0
+    best_tree, best_score = None, -1.0
     max_tree_depth_best, min_samples_split_best, min_samples_leaf_best, criterion_best  = 0, 0, 0, "gini"
-    for max_tree_depth in [3, 5, 7, 10]:
+    for max_tree_depth in [3, 7, 11, 13]:
         for min_samples_split in [2, 5, 11, 13]:
             for min_samples_leaf in [1, 3, 7, 13]:
                 for criterion in ["gini", "entropy"]:
@@ -146,7 +146,7 @@ def parallel_trees(user_id, dataframe) -> (int, Tree):
                         best_score, best_tree = current_score, Tree(max_tree_depth, min_samples_split,
                                                                     min_samples_leaf, criterion, dataframe)
 
-    print(f"User {user_id} finished: max_tree_depth={max_tree_depth_best} -- min_samples_split={min_samples_split_best} -- min_samples_leaf={min_samples_leaf_best} -- criterion={criterion_best} -- score=0.3333333333333333")
+    print(f"User {user_id} finished: max_tree_depth={max_tree_depth_best} -- min_samples_split={min_samples_split_best} -- min_samples_leaf={min_samples_leaf_best} -- criterion={criterion_best} -- score={best_score:.3f}")
     return user_id, best_tree
 
 
