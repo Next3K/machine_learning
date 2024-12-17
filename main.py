@@ -135,6 +135,7 @@ if __name__ == '__main__':
 
     # Create and train model with best hyperparameters
     num_features, learning_rate, lambda_reg = grid_search_hyperparams(train, possible_hyperparameters)
+    print(f"Best hyperparameters: num_features={num_features}, learning_rate={learning_rate}, reg={lambda_reg}")
 
     model = CrossFilter(train, num_features, learning_rate, lambda_reg)
 
