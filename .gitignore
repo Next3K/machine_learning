@@ -52,7 +52,7 @@ coverage.xml
 cover/
 
 submission.csv
-
+charts/
 # Translations
 *.mo
 *.pot
